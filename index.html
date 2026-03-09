@@ -1,235 +1,1089 @@
+<!--
+Obtenir une clé Gemini : rendez-vous sur https://aistudio.google.com/app/apikey, créez un projet Google Cloud puis générez une clé API dédiée.
+Ajouter la clé : utilisez le bloc « Clés API Gemini » de cette interface pour saisir puis enregistrer votre clé en local.
+Quota atteint : lorsque le quota gratuit est épuisé, ajoutez une nouvelle clé dans l’interface pour reprendre l’analyse (pensez à révoquer les anciennes si besoin).
+-->
 <!DOCTYPE html>
 <html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calcul de VMA</title>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Générateur d’Appréciations Générales</title>
+    <link
+      rel="preconnect"
+      href="https://fonts.googleapis.com"
+    />
+    <link
+      rel="preconnect"
+      href="https://fonts.gstatic.com"
+      crossorigin
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            padding: 20px;
-            max-width: 600px;
-            margin: auto;
+      :root {
+        color-scheme: light;
+        --bg: #f3f4f6;
+        --card: #ffffff;
+        --border: #e5e7eb;
+        --text: #111827;
+        --muted: #6b7280;
+        --primary: #2563eb;
+        --primary-dark: #1d4ed8;
+        --positive: #15803d33;
+        --negative: #b91c1c33;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        display: flex;
+        justify-content: center;
+        padding: 32px 16px;
+      }
+
+      .app-shell {
+        width: min(1100px, 100%);
+      }
+
+      .card {
+        background: var(--card);
+        border-radius: 18px;
+        padding: 32px;
+        box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08);
+        border: 1px solid var(--border);
+      }
+
+      header h1 {
+        margin: 0;
+        font-size: 1.8rem;
+      }
+
+      header p {
+        margin: 6px 0 0;
+        color: var(--muted);
+      }
+
+      .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 20px;
+        margin: 28px 0 12px;
+      }
+
+      label {
+        font-size: 0.95rem;
+        font-weight: 600;
+        display: block;
+        margin-bottom: 8px;
+      }
+
+      input[type='text'],
+      input[type='file'],
+      textarea {
+        width: 100%;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        padding: 12px 14px;
+        font-size: 1rem;
+        transition: border-color 0.2s ease;
+      }
+
+      input:focus,
+      textarea:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+      }
+
+      textarea {
+        resize: vertical;
+        min-height: 140px;
+      }
+
+      button {
+        border: none;
+        border-radius: 10px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+      }
+
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .btn-primary {
+        background: var(--primary);
+        color: #fff;
+        padding: 14px 26px;
+        font-size: 1rem;
+        box-shadow: 0 10px 20px rgba(37, 99, 235, 0.2);
+      }
+
+      .btn-primary:hover {
+        background: var(--primary-dark);
+        transform: translateY(-1px);
+      }
+
+      .file-display {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 0.9rem;
+        color: var(--muted);
+      }
+
+      .api-card {
+        background: #f9fafb;
+        border: 1px dashed var(--border);
+        border-radius: 16px;
+        padding: 20px;
+        margin-bottom: 24px;
+      }
+
+      .api-note {
+        background: #fffbea;
+        border: 1px solid #facc15;
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-size: 0.9rem;
+        margin-bottom: 16px;
+        color: #854d0e;
+      }
+
+      .api-input-row {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .api-input-row input {
+        flex: 1;
+      }
+
+      .api-keys-list {
+        margin-top: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .api-key-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-size: 0.95rem;
+      }
+
+      .api-key-item span {
+        font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', monospace;
+      }
+
+      .api-actions {
+        margin-top: 12px;
+        display: flex;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 12px;
+        font-size: 0.9rem;
+        color: var(--muted);
+      }
+
+      .btn-secondary {
+        background: #e0e7ff;
+        color: #312e81;
+        padding: 10px 18px;
+      }
+
+      .btn-outline {
+        background: transparent;
+        color: var(--primary);
+        border: 1px solid rgba(37, 99, 235, 0.4);
+        padding: 10px 18px;
+      }
+
+      .loader {
+        margin: 20px 0;
+        padding: 14px 16px;
+        border-radius: 12px;
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        color: #1e3a8a;
+        display: none;
+      }
+
+      .loader.visible {
+        display: block;
+      }
+
+      .results-section {
+        margin-top: 32px;
+        display: none;
+      }
+
+      .results-section.visible {
+        display: block;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        text-align: left;
+        padding: 12px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      th {
+        background: #f9fafb;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 120px;
+        padding: 10px 16px;
+        border-radius: 999px;
+        background: #ecfdf5;
+        color: #065f46;
+        font-weight: 600;
+      }
+
+      .highlight-toolbar {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin: 18px 0;
+      }
+
+      .highlight-btn {
+        padding: 8px 16px;
+        font-size: 0.9rem;
+      }
+
+      .highlight-positive {
+        background: var(--positive);
+        color: #065f46;
+      }
+
+      .highlight-negative {
+        background: var(--negative);
+        color: #7f1d1d;
+      }
+
+      .highlight-toggle {
+        background: #e2e8f0;
+        color: #1f2937;
+      }
+
+      .appreciation-block,
+      .profile-block {
+        background: #f9fafb;
+        border-radius: 14px;
+        padding: 16px;
+        border: 1px solid var(--border);
+      }
+
+      .double-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 20px;
+      }
+
+      .toolbar {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 12px;
+      }
+
+      .copy-btn {
+        background: #dbeafe;
+        color: #1d4ed8;
+        padding: 9px 16px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      canvas {
+        width: 100%;
+        max-height: 360px;
+      }
+
+      .hidden-highlights .highlight {
+        background: transparent !important;
+        color: inherit !important;
+        box-shadow: none !important;
+      }
+
+      .hidden-highlights .highlight-positive,
+      .hidden-highlights .highlight-negative {
+        background: transparent !important;
+      }
+
+      .empty-state {
+        text-align: center;
+        padding: 28px;
+        border-radius: 12px;
+        border: 1px dashed var(--border);
+        color: var(--muted);
+      }
+
+      @media (max-width: 640px) {
+        .card {
+          padding: 20px;
         }
-        input, select, button {
-            font-size: 18px;
-            margin: 10px 0;
-            padding: 10px;
-            width: 100%;
-            max-width: 200px;
+
+        .api-input-row {
+          flex-direction: column;
         }
-        button {
-            cursor: pointer;
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 120px;
-            height: 120px;
-            margin: 10px;
+
+        .file-display {
+          flex-direction: column;
+          align-items: flex-start;
         }
-        .btn-start { background-color: #4CAF50; }
-        .btn-plot { background-color: #2196F3; }
-        .btn-reset { background-color: #FF9800; }
-        .btn-download { background-color: #F44336; }
-        .input-circle {
-            width: 150px;
-            height: 150px;
-            border-radius: 50%;
-            padding: 10px;
-            text-align: center;
-        }
-        .input-row {
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-        }
-        .info-box {
-            border: 2px solid green;
-            padding: 10px;
-            margin: 20px 0;
-            font-weight: bold;
-            color: green;
-        }
-        #countdownBox {
-            display: none;
-            background-color: red;
-            color: white;
-            font-weight: bold;
-            padding: 10px;
-            margin: 10px 0;
-        }
-        #authorSection {
-            margin-top: 30px;
-            border: 1px solid black;
-            padding: 10px;
-            display: none;
-        }
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        border: 0;
+      }
+
+      .error-message {
+        color: #b91c1c;
+        margin-top: 8px;
+        font-size: 0.9rem;
+      }
+
+      .status-success {
+        color: #166534;
+      }
+
+      .status-error {
+        color: #b91c1c;
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
+    <div class="app-shell">
+      <main class="card" id="app">
+        <header>
+          <h1>Générateur d’Appréciations Générales</h1>
+          <p>Analysez un bulletin scolaire avec l’IA</p>
+        </header>
 
-    <h1>Calcul de la VMA</h1>
+        <section class="form-grid">
+          <div>
+            <label for="firstName">Prénom de l’élève</label>
+            <input
+              type="text"
+              id="firstName"
+              placeholder="Ex : Lina"
+              autocomplete="given-name"
+            />
+          </div>
+          <div>
+            <label for="pdfInput">Import du bulletin (PDF)</label>
+            <input
+              type="file"
+              id="pdfInput"
+              accept="application/pdf"
+            />
+            <div class="file-display">
+              <span>Fichier sélectionné :</span>
+              <strong id="selectedFile">Aucun fichier</strong>
+            </div>
+          </div>
+        </section>
 
-    <!-- Champs pour le nom du coureur et l'observateur -->
-    <input type="text" id="runnerName" class="input-circle" placeholder="Nom du coureur" required>
-    <input type="text" id="observerName" class="input-circle" placeholder="Nom de l'observateur" required>
+        <section class="api-card">
+          <h2>Clés API Gemini</h2>
+          <p class="api-note">
+            Stocker une clé dans le navigateur est pratique pour vos tests mais moins sûr qu’un stockage sur serveur. Pensez à régénérer/révoquer vos clés si vous partagez cet ordinateur.
+          </p>
+          <div class="api-input-row">
+            <input
+              type="text"
+              id="apiKeyInput"
+              placeholder="Saisissez votre clé (ex : AIza...)"
+              autocomplete="off"
+            />
+            <button class="btn-secondary" id="addKeyBtn">Ajouter la clé</button>
+          </div>
+          <div class="api-keys-list" id="apiKeysList"></div>
+          <div class="api-actions">
+            <button class="btn-outline" id="clearKeysBtn">Vider toutes les clés</button>
+            <span id="activeKeyIndicator">Clé active : 0 / 0</span>
+          </div>
+          <div class="error-message" id="apiKeyError" role="alert"></div>
+        </section>
 
-    <div class="input-row">
-        <!-- Entrée pour la VMA -->
-        <div>
-            <label for="runnerVMA">VMA (km/h) :</label>
-            <input type="number" id="runnerVMA" placeholder="VMA du coureur" required step="0.5">
-        </div>
-        <!-- Entrée pour le pourcentage de la VMA -->
-        <div>
-            <label for="targetPercentage">Pourcentage de VMA (%) :</label>
-            <input type="number" id="targetPercentage" placeholder="Ex: 50" required step="0.5">
-        </div>
+        <button class="btn-primary" id="analyzeBtn">Analyser le bulletin</button>
+
+        <div class="loader" id="loader" aria-live="polite"></div>
+
+        <section class="results-section" id="resultsSection">
+          <div id="resultsContent" class="results-card">
+            <div class="summary">
+              <h2>Tableau des matières</h2>
+              <div class="badge" id="globalAverage">Moyenne inconnue</div>
+              <div class="table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Matière</th>
+                      <th>Moyenne</th>
+                      <th>Appréciation</th>
+                    </tr>
+                  </thead>
+                  <tbody id="subjectsTable">
+                    <tr>
+                      <td colspan="3" class="empty-state">
+                        Les résultats apparaîtront après l’analyse.
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="highlight-toolbar" aria-label="Outils de surlignage">
+              <button class="highlight-btn highlight-positive" data-highlight="positive">
+                Surligner positif
+              </button>
+              <button class="highlight-btn highlight-negative" data-highlight="negative">
+                Surligner négatif
+              </button>
+              <button class="highlight-btn btn-outline" data-highlight="erase">Effacer les surlignages</button>
+              <button class="highlight-btn highlight-toggle" id="toggleHighlights">
+                Afficher / cacher les surlignages
+              </button>
+              <button class="highlight-btn btn-secondary" id="exportPdfBtn">
+                Exporter en PDF
+              </button>
+            </div>
+
+            <section>
+              <h2>Synthèse des compétences</h2>
+              <canvas id="competenceChart" role="img" aria-label="Radar des compétences"></canvas>
+            </section>
+
+            <div class="double-grid">
+              <article class="appreciation-block">
+                <div class="block-header">
+                  <h3>Appréciation générée</h3>
+                </div>
+                <textarea id="appreciationText" readonly placeholder="Le texte généré apparaîtra ici."></textarea>
+                <div class="toolbar">
+                  <button class="copy-btn" id="copyBtn">Copier le texte</button>
+                </div>
+              </article>
+
+              <article class="profile-block">
+                <h3>Profil de l’élève</h3>
+                <div id="profileContent">
+                  <p class="empty-state">Le profil sera généré après l’analyse.</p>
+                </div>
+              </article>
+            </div>
+          </div>
+        </section>
+      </main>
     </div>
 
-    <!-- Menu déroulant pour la durée de la course -->
-    <label for="duration">Durée de la course :</label>
-    <select id="duration">
-        <option value="90">1:30</option>
-        <option value="180">3:00</option>
-        <option value="270">4:30</option>
-        <option value="360">6:00</option>
-        <option value="450">7:30</option>
-        <option value="540">9:00</option>
-        <option value="630">10:30</option>
-        <option value="720">12:00</option>
-    </select>
-
-    <!-- Boîte de message pour la prédiction -->
-    <div id="infoBox" class="info-box" style="display:none;"></div>
-
-    <!-- Boutons pour démarrer la course et ajouter un plot -->
-    <div>
-        <button class="btn-start" onclick="startRace()">Démarrer</button>
-        <button class="btn-plot" onclick="addPlot()">Passer un plot</button>
-    </div>
-
-    <!-- Section de contrôle de la course -->
-    <div id="controlSection" style="display:none;">
-        <p>Temps écoulé : <span id="timeElapsed">0:00</span></p>
-        <p>Plots passés : <span id="plotCount">0</span></p>
-        <div id="countdownBox"></div>
-        <div id="resultsLog"></div>
-        <button class="btn-reset" id="resetBtn" onclick="resetData()" style="display: none;">Réinitialiser</button>
-        <button class="btn-download" id="downloadBtn" onclick="downloadResults()" style="display: none;">Télécharger</button>
-    </div>
-
-    <!-- Section d'auteur -->
-    <div id="authorSection">
-        <p>Auteur : Jérôme BARLETTA</p>
-        <a href="http://bjerome.eklablog.com/accueil-c30088056" target="_blank">Accéder au blog</a>
-    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.min.js" integrity="sha512-qeGMuNcaUVbnVClKiWkjOfE7wsBhb1kKEuWiRiwXQDq6rqcD93/MvLsqqwPHG9u2viX3apuw7LazD79gZHdPzA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script>
+      if (window['pdfjsLib']) {
+        window['pdfjsLib'].GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.js';
+      }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha256-i6q1SeDsICoZ6irMIXja+6JGZveHFkNjEcNWef39/Cs=" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-YcsIP7qP4dzdrIW6DCeA44yWiNysGEKMluSleqU9jwELyhlHLLJoPLD114F8CbnMD4PlzyBbs6K8ZZr3Su2uXg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
     <script>
-        let duration, interval, timeElapsed = 0, plotCount = 0, results = [], countdownInterval;
+      const GEMINI_MODELS = [
+        'models/gemini-1.5-flash-latest',
+        'models/gemini-1.5-pro-latest'
+      ];
 
-        // Fonction pour démarrer la course
-        function startRace() {
-            const runnerName = document.getElementById("runnerName").value;
-            const observerName = document.getElementById("observerName").value;
-            const runnerVMA = parseFloat(document.getElementById("runnerVMA").value);
-            const targetPercentage = parseFloat(document.getElementById("targetPercentage").value);
+      const KEY_STORAGE_KEY = 'gemini_api_keys';
+      const ACTIVE_KEY_INDEX_KEY = 'gemini_active_key_index';
 
-            if (!runnerName || !observerName || isNaN(runnerVMA) || isNaN(targetPercentage)) {
-                alert("Veuillez remplir toutes les informations avant de démarrer la course.");
-                return;
+      const state = {
+        selectedFile: null,
+        chartInstance: null,
+        highlightsHidden: false
+      };
+
+      document.addEventListener('DOMContentLoaded', () => {
+        bindEventListeners();
+        renderStoredKeys();
+        setLoader('Prêt pour une nouvelle analyse.', 'info');
+      });
+
+      function bindEventListeners() {
+        document.getElementById('pdfInput').addEventListener('change', handleFileUpload);
+        document.getElementById('addKeyBtn').addEventListener('click', addApiKey);
+        document.getElementById('clearKeysBtn').addEventListener('click', clearAllKeys);
+        document.getElementById('analyzeBtn').addEventListener('click', analyzeFlow);
+        document.getElementById('copyBtn').addEventListener('click', copierTexte);
+        document.getElementById('exportPdfBtn').addEventListener('click', exportToPDF);
+        document.getElementById('toggleHighlights').addEventListener('click', toggleHighlights);
+        document.querySelectorAll('.highlight-btn[data-highlight]').forEach((btn) => {
+          if (btn.dataset.highlight === 'positive') {
+            btn.addEventListener('click', () => applyHighlight('positive'));
+          } else if (btn.dataset.highlight === 'negative') {
+            btn.addEventListener('click', () => applyHighlight('negative'));
+          } else if (btn.dataset.highlight === 'erase') {
+            btn.addEventListener('click', removeAllHighlights);
+          }
+        });
+      }
+
+      function handleFileUpload(event) {
+        const file = event.target.files[0];
+        const fileLabel = document.getElementById('selectedFile');
+        if (!file) {
+          state.selectedFile = null;
+          fileLabel.textContent = 'Aucun fichier';
+          return;
+        }
+
+        if (file.type !== 'application/pdf') {
+          alert('Merci de sélectionner un fichier PDF.');
+          event.target.value = '';
+          state.selectedFile = null;
+          fileLabel.textContent = 'Aucun fichier';
+          return;
+        }
+
+        state.selectedFile = file;
+        fileLabel.textContent = file.name;
+      }
+
+      async function analyzeFlow() {
+        clearErrors();
+        const firstName = document.getElementById('firstName').value.trim();
+        if (!state.selectedFile) {
+          setLoader('Veuillez importer un bulletin au format PDF.', 'error');
+          return;
+        }
+
+        const storedKeys = loadStoredKeys();
+        if (!storedKeys.length) {
+          setLoader('Ajoutez au moins une clé API Gemini avant de lancer l’analyse.', 'error');
+          return;
+        }
+
+        try {
+          setLoader('Extraction du bulletin en cours…', 'info');
+          const bulletinText = await extractTextFromPDF(state.selectedFile);
+
+          setLoader('Analyse IA en cours…', 'info');
+          const analysisData = await analyzeBulletinText(bulletinText, firstName);
+          const finalAppreciation = generateFinalAppreciation(analysisData);
+          const profile = generateProfile(analysisData);
+
+          displayAnalysisResults(analysisData);
+          displayFinalOutput(finalAppreciation, profile);
+          setLoader('Analyse terminée avec succès.', 'success');
+        } catch (error) {
+          console.error(error);
+          setLoader(error.message || 'Une erreur inattendue est survenue.', 'error');
+        }
+      }
+
+      function clearErrors() {
+        document.getElementById('apiKeyError').textContent = '';
+      }
+
+      function setLoader(message, status = 'info') {
+        const loader = document.getElementById('loader');
+        loader.textContent = message;
+        loader.classList.remove('status-success', 'status-error');
+        if (!message) {
+          loader.classList.remove('visible');
+          return;
+        }
+        loader.classList.add('visible');
+        if (status === 'success') {
+          loader.classList.add('status-success');
+        } else if (status === 'error') {
+          loader.classList.add('status-error');
+        }
+      }
+
+      async function extractTextFromPDF(file) {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        let textContent = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          const pageText = content.items.map((item) => item.str).join(' ');
+          textContent += `\n--- Page ${i} ---\n${pageText}`;
+        }
+        return textContent.trim();
+      }
+
+      async function analyzeBulletinText(text, manualFirstName) {
+        const prompt = buildAnalysisPrompt(text, manualFirstName);
+        const responseText = await callGeminiAPI(prompt);
+        const parsed = safeJsonParse(responseText);
+        if (!parsed) {
+          throw new Error('Réponse IA illisible. Merci de réessayer ou de reformuler.');
+        }
+        if (manualFirstName && !parsed.prenom) {
+          parsed.prenom = manualFirstName;
+        }
+        parsed.matieres = Array.isArray(parsed.matieres) ? parsed.matieres : [];
+        parsed.synthese_competences = parsed.synthese_competences || {
+          axes: [
+            'Travail/Sérieux',
+            'Compréhension/Capacités',
+            'Comportement/Attitude',
+            'Participation/Oral',
+            'Progression'
+          ],
+          scores: [3, 3, 3, 3, 3]
+        };
+        parsed.points_forts_generaux = parsed.points_forts_generaux || [];
+        parsed.axes_amelioration = parsed.axes_amelioration || [];
+        return parsed;
+      }
+
+      function buildAnalysisPrompt(text, manualFirstName) {
+        const firstNameHint = manualFirstName
+          ? `Le prénom à privilégier est : ${manualFirstName}.`
+          : 'Si aucun prénom clair n’est trouvé, laissez la valeur "".';
+        return `Tu es un assistant pédagogique. Analyse le bulletin suivant et réponds UNIQUEMENT avec un JSON strict respectant exactement cette structure :\n{
+  "prenom": "String",
+  "matieres": [
+    { "nom": "String", "moyenne": "String", "appreciation": "String" }
+  ],
+  "synthese_competences": {
+    "axes": [
+      "Travail/Sérieux",
+      "Compréhension/Capacités",
+      "Comportement/Attitude",
+      "Participation/Oral",
+      "Progression"
+    ],
+    "scores": [1,2,3,4,5]
+  },
+  "points_forts_generaux": ["String"],
+  "axes_amelioration": ["String"]
+}\nConsigne : ${firstNameHint} Identifie toutes les matières, leurs moyennes et les appréciations complètes. Propose une synthèse avec scores de 1 (faible) à 5 (excellent) pour les axes listés. Retourne uniquement du JSON sans texte additionnel ni markdown.\n\nCONTENU DU BULLETIN :\n${text}`;
+      }
+
+      function safeJsonParse(rawText) {
+        if (!rawText) return null;
+        const cleaned = rawText
+          .replace(/^```json|```$/gim, '')
+          .replace(/^```|```$/gim, '')
+          .trim();
+        try {
+          return JSON.parse(cleaned);
+        } catch (error) {
+          console.warn('JSON parsing error', error);
+          return null;
+        }
+      }
+
+      async function callGeminiAPI(userPrompt) {
+        const keys = loadStoredKeys();
+        if (!keys.length) {
+          throw new Error('Aucune clé API n’est enregistrée.');
+        }
+
+        let lastError = new Error('Impossible de contacter Gemini.');
+
+        for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
+          const key = keys[keyIndex];
+          setActiveKeyIndex(keyIndex, keys.length);
+
+          for (const model of GEMINI_MODELS) {
+            try {
+              const response = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/${model}:generateContent?key=${encodeURIComponent(key)}`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    contents: [
+                      {
+                        role: 'user',
+                        parts: [{ text: userPrompt }]
+                      }
+                    ]
+                  })
+                }
+              );
+
+              if (response.status === 429) {
+                lastError = new Error(
+                  'Quota atteint pour cette clé. Passage à la suivante…'
+                );
+                break; // switch to next key
+              }
+
+              if (response.status === 401 || response.status === 403) {
+                lastError = new Error(
+                  'Clé refusée (401/403). Vérifiez qu’elle est valide et autorisée.'
+                );
+                break;
+              }
+
+              if (!response.ok) {
+                const text = await response.text();
+                lastError = new Error(`Erreur Gemini (${response.status}) : ${text}`);
+                break;
+              }
+
+              const data = await response.json();
+              const outputText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (!outputText) {
+                lastError = new Error('Réponse Gemini vide.');
+                continue;
+              }
+
+              return outputText;
+            } catch (error) {
+              console.error('Appel Gemini échoué', error);
+              lastError = error;
             }
-
-            duration = parseFloat(document.getElementById("duration").value);
-            timeElapsed = 0;
-            plotCount = 0;
-            results = [];
-
-            // Calcul de la VMA et des plots
-            const targetVMA = runnerVMA * (targetPercentage / 100);
-            const expectedPlots = targetVMA * 2; // 2 plots par km/h à chaque 1min30
-
-            document.getElementById("infoBox").style.display = "block";
-            document.getElementById("infoBox").textContent = `Vous avez choisi ${targetPercentage}% de VMA, soit ${targetVMA.toFixed(1)} km/h. Vous devez passer ${expectedPlots.toFixed(0)} plots sur chaque période d'1 minute 30.`;
-            document.getElementById("controlSection").style.display = "block";
-
-            interval = setInterval(updateTime, 1000);
+          }
         }
 
-        // Fonction pour mettre à jour le temps
-        function updateTime() {
-            timeElapsed++;
-            document.getElementById("timeElapsed").textContent = formatTime(timeElapsed);
+        throw new Error(
+          lastError?.message ||
+            'Toutes les clés ont été testées sans succès. Ajoutez une nouvelle clé Gemini.'
+        );
+      }
 
-            if (timeElapsed % 90 === 0) {
-                calculatePlots();
-                plotCount = 0; // Réinitialisation du compteur de plots
+      function generateFinalAppreciation(data) {
+        const prenom = data.prenom || 'Cet élève';
+        const points = data.points_forts_generaux.slice(0, 3).join(', ');
+        const axes = data.axes_amelioration.slice(0, 2).join(', ');
+        const moyenne = computeGlobalAverage(data.matieres);
+        return `${prenom} présente une moyenne générale estimée à ${moyenne}. Les points forts mis en avant sont : ${points || 'à préciser selon les matières'}. Les axes d’amélioration prioritaires concernent ${axes || 'la consolidation des acquis'}. L’ensemble du bulletin laisse apparaître un engagement ${qualifyAverage(moyenne)} et une progression ${describeProgress(data.synthese_competences?.scores)}.`;
+      }
+
+      function generateProfile(data) {
+        const profil = [];
+        profil.push(`Engagement : ${qualifyAverage(computeGlobalAverage(data.matieres))}`);
+        const synthese = data.synthese_competences;
+        if (synthese?.axes && synthese?.scores) {
+          synthese.axes.forEach((axe, index) => {
+            profil.push(`${axe} → ${synthese.scores[index] || 'N/A'} / 5`);
+          });
+        }
+        if (data.points_forts_generaux?.length) {
+          profil.push(`Points forts : ${data.points_forts_generaux.join(', ')}`);
+        }
+        if (data.axes_amelioration?.length) {
+          profil.push(`À renforcer : ${data.axes_amelioration.join(', ')}`);
+        }
+        return profil;
+      }
+
+      function displayAnalysisResults(data) {
+        const tableBody = document.getElementById('subjectsTable');
+        tableBody.innerHTML = '';
+
+        if (!data.matieres.length) {
+          tableBody.innerHTML = '<tr><td colspan="3" class="empty-state">Aucune matière détectée. Vérifiez le bulletin ou reformulez.</td></tr>';
+        } else {
+          data.matieres.forEach((matiere) => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+              <td>${matiere.nom || 'Matière'}</td>
+              <td>${matiere.moyenne || '—'}</td>
+              <td>${matiere.appreciation || '—'}</td>
+            `;
+            tableBody.appendChild(row);
+          });
+        }
+
+        document.getElementById('globalAverage').textContent = `Moyenne estimée : ${computeGlobalAverage(data.matieres)}`;
+        createRadarChart(data.synthese_competences);
+        document.getElementById('resultsSection').classList.add('visible');
+      }
+
+      function displayFinalOutput(appreciation, profile) {
+        document.getElementById('appreciationText').value = appreciation;
+        const profileContainer = document.getElementById('profileContent');
+        profileContainer.innerHTML = '';
+        profile.forEach((line) => {
+          const p = document.createElement('p');
+          p.textContent = line;
+          profileContainer.appendChild(p);
+        });
+      }
+
+      function createRadarChart(competences = {}) {
+        const ctx = document.getElementById('competenceChart');
+        const axes = competences.axes || [
+          'Travail/Sérieux',
+          'Compréhension/Capacités',
+          'Comportement/Attitude',
+          'Participation/Oral',
+          'Progression'
+        ];
+        const scores = competences.scores || [3, 3, 3, 3, 3];
+
+        if (state.chartInstance) {
+          state.chartInstance.destroy();
+        }
+
+        state.chartInstance = new Chart(ctx, {
+          type: 'radar',
+          data: {
+            labels: axes,
+            datasets: [
+              {
+                label: 'Scores sur 5',
+                data: scores,
+                backgroundColor: 'rgba(37, 99, 235, 0.2)',
+                borderColor: 'rgba(37, 99, 235, 1)',
+                pointBackgroundColor: 'rgba(37, 99, 235, 1)'
+              }
+            ]
+          },
+          options: {
+            plugins: {
+              legend: { display: false }
+            },
+            scales: {
+              r: {
+                beginAtZero: true,
+                suggestedMax: 5,
+                ticks: {
+                  stepSize: 1
+                }
+              }
             }
+          }
+        });
+      }
 
-            if (timeElapsed >= duration) {
-                clearInterval(interval);
-                document.getElementById("authorSection").style.display = 'block';
-                document.getElementById("resetBtn").style.display = 'block';
-                document.getElementById("downloadBtn").style.display = 'block';
-                alert("Course terminée !");
-            }
+      function exportToPDF() {
+        const element = document.getElementById('resultsContent');
+        if (!element) {
+          alert('Aucun contenu à exporter pour le moment.');
+          return;
         }
+        html2pdf()
+          .set({ filename: 'rapport-bulletin.pdf', html2canvas: { scale: 2 } })
+          .from(element)
+          .save();
+      }
 
-        // Fonction pour ajouter un plot
-        function addPlot() {
-            plotCount++;
-            document.getElementById("plotCount").textContent = plotCount;
+      async function copierTexte() {
+        const text = document.getElementById('appreciationText').value;
+        if (!text) {
+          alert('Aucun texte à copier.');
+          return;
         }
-
-        // Calcul des plots passés
-        function calculatePlots() {
-            const runnerVMA = parseFloat(document.getElementById("runnerVMA").value);
-            const targetPercentage = parseFloat(document.getElementById("targetPercentage").value);
-            const targetVMA = runnerVMA * (targetPercentage / 100);
-            const expectedPlots = targetVMA * 2; // 2 plots par km/h
-            const error = plotCount - expectedPlots;
-
-            results.push(`Après ${formatTime(timeElapsed)} : ${plotCount} plots passés, ${error} erreurs.`);
-            document.getElementById("resultsLog").innerHTML += `Après ${formatTime(timeElapsed)} : ${plotCount} plots passés, ${error} erreurs.<br>`;
+        try {
+          await navigator.clipboard.writeText(text);
+          setLoader('Appréciation copiée dans le presse-papiers.', 'success');
+        } catch (error) {
+          console.error('Copie impossible', error);
+          setLoader('Impossible de copier automatiquement. Sélectionnez le texte manuellement.', 'error');
         }
+      }
 
-        // Formater le temps en mm:ss
-        function formatTime(seconds) {
-            const minutes = Math.floor(seconds / 60);
-            const secs = seconds % 60;
-            return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
+      function applyHighlight(type) {
+        const selection = window.getSelection();
+        if (!selection || selection.isCollapsed) {
+          alert('Sélectionnez le texte à surligner puis cliquez sur le bouton.');
+          return;
         }
+        const range = selection.getRangeAt(0);
+        const span = document.createElement('span');
+        span.classList.add('highlight', `highlight-${type}`);
+        span.style.backgroundColor = type === 'positive' ? '#bbf7d0' : '#fecaca';
+        span.style.boxShadow = '0 0 0 2px rgba(0,0,0,0.05) inset';
+        span.style.padding = '0 2px';
+        try {
+          range.surroundContents(span);
+          selection.removeAllRanges();
+        } catch (error) {
+          alert('Impossible de surligner cette sélection. Essayez de sélectionner moins de contenu.');
+        }
+      }
 
-        // Réinitialiser toutes les données
-        function resetData() {
-            document.getElementById("runnerName").value = "";
-            document.getElementById("observerName").value = "";
-            document.getElementById("runnerVMA").value = "";
-            document.getElementById("targetPercentage").value = "";
-            document.getElementById("duration").value = "90";
-            document.getElementById("plotCount").textContent = "0";
-            document.getElementById("timeElapsed").textContent = "0:00";
-                       document.getElementById("infoBox").style.display = "none";
-            document.getElementById("controlSection").style.display = "none";
-            document.getElementById("resultsLog").innerHTML = "";
-            document.getElementById("authorSection").style.display = 'none';
-            document.getElementById("resetBtn").style.display = 'none';
-            document.getElementById("downloadBtn").style.display = 'none';
-            timeElapsed = 0;
-            plotCount = 0;
-            results = [];
-        }
+      function removeAllHighlights() {
+        document.querySelectorAll('.highlight').forEach((span) => {
+          const parent = span.parentNode;
+          while (span.firstChild) {
+            parent.insertBefore(span.firstChild, span);
+          }
+          parent.removeChild(span);
+        });
+      }
 
-        // Fonction pour télécharger les résultats
-        function downloadResults() {
-            const blob = new Blob([results.join('\n')], { type: 'text/plain' });
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = 'results.txt';
-            link.click();
+      function toggleHighlights() {
+        state.highlightsHidden = !state.highlightsHidden;
+        document.body.classList.toggle('hidden-highlights', state.highlightsHidden);
+      }
+
+      function computeGlobalAverage(matieres = []) {
+        const numbers = matieres
+          .map((matiere) => parseFloat(String(matiere.moyenne).replace(',', '.')))
+          .filter((val) => !Number.isNaN(val));
+        if (!numbers.length) return 'N/A';
+        const sum = numbers.reduce((acc, val) => acc + val, 0);
+        return (sum / numbers.length).toFixed(2).replace('.', ',');
+      }
+
+      function qualifyAverage(avgString) {
+        const avg = parseFloat(String(avgString).replace(',', '.'));
+        if (Number.isNaN(avg)) return 'à préciser';
+        if (avg >= 15) return 'très solide';
+        if (avg >= 12) return 'satisfaisant';
+        if (avg >= 10) return 'en progrès';
+        return 'fragile';
+      }
+
+      function describeProgress(scores = []) {
+        if (!scores.length) return 'à surveiller';
+        const avg = scores.reduce((sum, val) => sum + Number(val || 0), 0) / scores.length;
+        if (avg >= 4) return 'bien engagée';
+        if (avg >= 3) return 'encourageante';
+        if (avg >= 2) return 'à consolider';
+        return 'à relancer';
+      }
+
+      function loadStoredKeys() {
+        const raw = localStorage.getItem(KEY_STORAGE_KEY);
+        return raw ? JSON.parse(raw) : [];
+      }
+
+      function saveStoredKeys(keys) {
+        localStorage.setItem(KEY_STORAGE_KEY, JSON.stringify(keys));
+      }
+
+      function renderStoredKeys() {
+        const list = document.getElementById('apiKeysList');
+        const keys = loadStoredKeys();
+        list.innerHTML = '';
+        if (!keys.length) {
+          list.innerHTML = '<p class="empty-state">Aucune clé enregistrée pour le moment.</p>';
+        } else {
+          keys.forEach((key, index) => {
+            const item = document.createElement('div');
+            item.className = 'api-key-item';
+            const mask = maskKey(key);
+            const label = document.createElement('span');
+            label.textContent = `${mask} ${index === getActiveKeyIndex() ? '(active)' : ''}`;
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'btn-outline';
+            deleteBtn.textContent = 'Supprimer';
+            deleteBtn.addEventListener('click', () => deleteKey(index));
+            item.appendChild(label);
+            item.appendChild(deleteBtn);
+            list.appendChild(item);
+          });
         }
+        setActiveKeyIndex(getActiveKeyIndex(), keys.length);
+      }
+
+      function maskKey(key) {
+        if (!key) return '';
+        const start = key.slice(0, 4);
+        const end = key.slice(-4);
+        return `${start}…${end}`;
+      }
+
+      function addApiKey() {
+        const input = document.getElementById('apiKeyInput');
+        const value = input.value.trim();
+        const errorEl = document.getElementById('apiKeyError');
+        if (!value) {
+          errorEl.textContent = 'Merci de saisir une clé valide.';
+          return;
+        }
+        if (!/^AIza[0-9A-Za-z-_]{10,}$/.test(value)) {
+          errorEl.textContent = 'Le format de la clé semble incorrect (doit commencer par AIza).';
+          return;
+        }
+        const keys = loadStoredKeys();
+        keys.push(value);
+        saveStoredKeys(keys);
+        input.value = '';
+        errorEl.textContent = '';
+        setActiveKeyIndex(keys.length - 1, keys.length);
+        renderStoredKeys();
+        setLoader('Clé enregistrée localement.', 'success');
+      }
+
+      function deleteKey(index) {
+        const keys = loadStoredKeys();
+        keys.splice(index, 1);
+        saveStoredKeys(keys);
+        let currentIndex = getActiveKeyIndex();
+        if (currentIndex >= keys.length) {
+          currentIndex = keys.length - 1;
+        }
+        localStorage.setItem(ACTIVE_KEY_INDEX_KEY, Math.max(currentIndex, 0));
+        renderStoredKeys();
+      }
+
+      function clearAllKeys() {
+        if (!confirm('Supprimer toutes les clés enregistrées ?')) return;
+        localStorage.removeItem(KEY_STORAGE_KEY);
+        localStorage.removeItem(ACTIVE_KEY_INDEX_KEY);
+        renderStoredKeys();
+      }
+
+      function setActiveKeyIndex(index, total = loadStoredKeys().length) {
+        if (total <= 0) {
+          document.getElementById('activeKeyIndicator').textContent = 'Clé active : 0 / 0';
+          localStorage.setItem(ACTIVE_KEY_INDEX_KEY, '0');
+          return;
+        }
+        const safeIndex = Math.max(0, Math.min(index ?? 0, total - 1));
+        localStorage.setItem(ACTIVE_KEY_INDEX_KEY, safeIndex);
+        document.getElementById('activeKeyIndicator').textContent = `Clé active : ${safeIndex + 1} / ${total}`;
+      }
+
+      function getActiveKeyIndex() {
+        return parseInt(localStorage.getItem(ACTIVE_KEY_INDEX_KEY) || '0', 10) || 0;
+      }
+
+      function exportKeysState() {
+        // helper reserved for future evolutions
+      }
     </script>
-
-</body>
+  </body>
 </html>
