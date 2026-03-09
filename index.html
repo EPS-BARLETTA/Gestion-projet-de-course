@@ -702,7 +702,7 @@ Quota atteint : lorsque le quota gratuit est épuisé, ajoutez une nouvelle clé
   },
   "points_forts_generaux": ["String"],
   "axes_amelioration": ["String"]
-}\nConsigne : ${firstNameHint} Identifie toutes les matières, leurs moyennes et les appréciations complètes. Propose une synthèse avec scores de 1 (faible) à 5 (excellent) pour les axes listés. Retourne uniquement du JSON sans texte additionnel ni markdown.\n\nCONTENU DU BULLETIN :\n${text}`;
+}\nConsignes détaillées :\n- ${firstNameHint}\n- Pour chaque \"appreciation\", conserve le texte utile du bulletin et entoure les passages positifs avec <span class=\"highlight highlight-positive\">…</span> et les passages négatifs avec <span class=\"highlight highlight-negative\">…</span>.\n- Positif = sérieux, motivation, progrès, encouragements, félicitations, bonne participation, engagement, bons résultats.\n- Négatif = bavardages, manque de travail, manque d’implication, déconcentration, attitude perturbatrice, comportement négatif, résultats ou efforts insuffisants.\n- Ne crée aucune autre balise HTML que ces <span> et n’utilise aucun markdown.\n- Ne résume pas l’appréciation si elle est exploitable telle quelle.\n- Retourne uniquement du JSON strict.\n\nCONTENU DU BULLETIN :\n${text}`;
       }
 
       function cleanModelText(text) {
@@ -710,6 +710,33 @@ Quota atteint : lorsque le quota gratuit est épuisé, ajoutez une nouvelle clé
           .replace(/```json/gi, '')
           .replace(/```/g, '')
           .trim();
+      }
+
+      function sanitizeAppreciationHTML(html) {
+        const container = document.createElement('div');
+        container.innerHTML = String(html || '');
+        const allowedClasses = new Set(['highlight', 'highlight-positive', 'highlight-negative']);
+
+        (function clean(node) {
+          Array.from(node.childNodes).forEach((child) => {
+            if (child.nodeType === Node.ELEMENT_NODE) {
+              if (child.tagName.toLowerCase() === 'span') {
+                const filtered = Array.from(child.classList).filter((cls) => allowedClasses.has(cls));
+                if (filtered.length) {
+                  child.className = filtered.join(' ');
+                } else {
+                  child.removeAttribute('class');
+                }
+                clean(child);
+              } else {
+                const textNode = document.createTextNode(child.textContent || '');
+                child.replaceWith(textNode);
+              }
+            }
+          });
+        })(container);
+
+        return container.innerHTML;
       }
 
       function safeJsonParse(rawText) {
@@ -927,11 +954,12 @@ Quota atteint : lorsque le quota gratuit est épuisé, ajoutez une nouvelle clé
           tableBody.innerHTML = '<tr><td colspan="3" class="empty-state">Aucune matière détectée. Vérifiez le bulletin ou reformulez.</td></tr>';
         } else {
           data.matieres.forEach((matiere) => {
+            const sanitizedAppreciation = sanitizeAppreciationHTML(matiere.appreciation || '—');
             const row = document.createElement('tr');
             row.innerHTML = `
               <td>${matiere.nom || 'Matière'}</td>
               <td>${matiere.moyenne || '—'}</td>
-              <td>${matiere.appreciation || '—'}</td>
+              <td>${sanitizedAppreciation}</td>
             `;
             tableBody.appendChild(row);
           });
