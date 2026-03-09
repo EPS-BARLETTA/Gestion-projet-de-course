@@ -920,12 +920,221 @@ Quota atteint : lorsque le quota gratuit est épuisé, ajoutez une nouvelle clé
         }
       }
 
+      function formatList(items = []) {
+        const cleaned = (items || [])
+          .map((item) => (typeof item === 'string' ? item.trim() : ''))
+          .filter(Boolean);
+        if (!cleaned.length) return '';
+        if (cleaned.length === 1) return cleaned[0];
+        if (cleaned.length === 2) return `${cleaned[0]} et ${cleaned[1]}`;
+        const head = cleaned.slice(0, -1).join(', ');
+        const tail = cleaned.at(-1);
+        return `${head} et ${tail}`;
+      }
+
+      function pickVariant(seed, templates) {
+        if (!templates || !templates.length) return null;
+        const index = Math.abs(Math.round(seed)) % templates.length;
+        return templates[index];
+      }
+
+      function getPerformanceLevel(avg) {
+        if (!Number.isFinite(avg)) return 'unknown';
+        if (avg >= 15.5) return 'excellent';
+        if (avg >= 13.5) return 'tres_bon';
+        if (avg >= 12) return 'bon';
+        if (avg >= 10.5) return 'encourageant';
+        if (avg >= 9) return 'fragile';
+        return 'delicat';
+      }
+
       function generateFinalAppreciation(data) {
-        const prenom = data.prenom || 'Cet élève';
-        const points = data.points_forts_generaux.slice(0, 3).join(', ');
-        const axes = data.axes_amelioration.slice(0, 2).join(', ');
-        const moyenne = computeGlobalAverage(data.matieres);
-        return `${prenom} présente une moyenne générale estimée à ${moyenne}. Les points forts mis en avant sont : ${points || 'à préciser selon les matières'}. Les axes d’amélioration prioritaires concernent ${axes || 'la consolidation des acquis'}. L’ensemble du bulletin laisse apparaître un engagement ${qualifyAverage(moyenne)} et une progression ${describeProgress(data.synthese_competences?.scores)}.`;
+        const prenom = data.prenom?.trim() || 'L’élève';
+        const moyenneStr = computeGlobalAverage(data.matieres);
+        const moyenneVal = parseFloat(String(moyenneStr).replace(',', '.'));
+        const hasMoyenne = moyenneStr !== 'N/A' && !Number.isNaN(moyenneVal);
+        const moyenneMention = hasMoyenne ? ` (moyenne ${moyenneStr})` : '';
+        const level = getPerformanceLevel(moyenneVal);
+        const forces = formatList(data.points_forts_generaux || []);
+        const axes = formatList(data.axes_amelioration || []);
+        const seedName = [...prenom].reduce((acc, char) => acc + char.charCodeAt(0), 0);
+        const baseSeed = seedName + Math.round((Number.isFinite(moyenneVal) ? moyenneVal : 10) * 13);
+        const sentences = [];
+
+        const introTemplates = {
+          excellent: [
+            (name, mention) => `${name} réalise un excellent trimestre${mention}, porté par un engagement remarquable.`,
+            (name, mention) => `${name} confirme des résultats d’une grande qualité${mention} et une attitude exemplaire.`
+          ],
+          tres_bon: [
+            (name, mention) => `${name} signe un très bon trimestre${mention}, sérieux et constant.`,
+            (name, mention) => `${name} montre des acquis solides${mention} et reste très impliqué.`
+          ],
+          bon: [
+            (name, mention) => `${name} présente un ensemble satisfaisant${mention}, avec des progrès sensibles.`,
+            (name, mention) => `${name} fait preuve d’un investissement régulier${mention} qui commence à porter ses fruits.`
+          ],
+          encourageant: [
+            (name, mention) => `${name} réalise un trimestre encourageant${mention}, la dynamique est positive.`,
+            (name, mention) => `${name} montre de réelles capacités${mention} grâce aux efforts engagés récemment.`
+          ],
+          fragile: [
+            (name, mention) => `${name} garde un potentiel certain${mention}, même si l’ensemble reste à stabiliser.`,
+            (name, mention) => `${name} progresse avec prudence${mention} et doit encore gagner en régularité.`
+          ],
+          delicat: [
+            (name, mention) => `${name} dispose d’atouts réels${mention}, mais doit structurer davantage son investissement.`,
+            (name, mention) => `${name} conserve la capacité de rebondir${mention}, à condition de renforcer son organisation.`
+          ],
+          unknown: [
+            (name) => `${name} fait preuve d’un engagement appréciable, même en l’absence d’une moyenne consolidée.`,
+            (name) => `${name} se montre disponible et impliqué, ce qui ressort nettement des retours de classe.`
+          ]
+        };
+
+        const strengthsWithForces = [
+          (name, qualities) => `On apprécie particulièrement ${qualities}, gages d’une belle motivation.`,
+          (name, qualities) => `${qualities} se remarquent nettement et nourrissent ses réussites.`,
+          (name, qualities) => `Les professeurs soulignent ${qualities}, preuve d’une implication sincère.`
+        ];
+
+        const generalStrengths = {
+          excellent: [
+            () => `Sa participation nourrit la dynamique de classe et révèle une grande maturité.`,
+            () => `Le travail est régulier et la présence en cours toujours constructive.`
+          ],
+          tres_bon: [
+            () => `Son attitude attentive et disponible favorise la qualité des échanges.`,
+            () => `Le sérieux quotidien et la constance des efforts sont très appréciés.`
+          ],
+          bon: [
+            () => `Sa motivation s’affirme et la classe profite de contributions pertinentes.`,
+            () => `Le travail est mieux structuré et gagne en efficacité.`
+          ],
+          encourageant: [
+            () => `Les efforts récents se traduisent par plus de présence et d’application.`,
+            () => `La progression est visible, notamment grâce à un travail plus régulier.`
+          ],
+          fragile: [
+            () => `L’implication reste inégale mais l’on perçoit une réelle volonté de progresser.`,
+            () => `Les bases se consolident peu à peu lorsque l’attention demeure soutenue.`
+          ],
+          delicat: [
+            () => `Les intentions sont bonnes et demandent à devenir des habitudes durables.`,
+            () => `Lorsqu’il est concentré, son travail gagne en qualité; il faut ancrer cette exigence.`
+          ],
+          unknown: [
+            () => `Les retours soulignent une présence attentive et respectueuse.`,
+            () => `Son attitude sérieuse est perceptible malgré l’absence d’indicateurs chiffrés.`
+          ]
+        };
+
+        const adviceWithAxes = [
+          (name, needs) => `Pour aller plus loin, ${name} gagnerait à ${needs}.`,
+          (name, needs) => `Afin de poursuivre sur cette lancée, ${name} devra veiller à ${needs}.`,
+          (name, needs) => `Il lui serait profitable de ${needs} pour consolider l’ensemble.`
+        ];
+
+        const adviceNoAxes = {
+          excellent: [
+            (name) => `Pour aller plus loin, ${name} peut continuer à nourrir cette exigence dans chaque discipline.`,
+            (name) => `Afin de poursuivre sur cette lancée, ${name} veillera à conserver la même intensité de travail.`
+          ],
+          tres_bon: [
+            (name) => `${name} gagnerait à maintenir cette rigueur sur toute la durée du trimestre.`,
+            (name) => `Pour conforter ces acquis, ${name} doit rester attentif aux détails méthodologiques.`
+          ],
+          bon: [
+            (name) => `Une organisation encore plus régulière permettra à ${name} de franchir un cap supplémentaire.`,
+            (name) => `Pour aller plus loin, ${name} devra pérenniser la méthodologie mise en place.`
+          ],
+          encourageant: [
+            (name) => `Afin de poursuivre sur cette lancée, ${name} devra garder le même sérieux chaque semaine.`,
+            (name) => `${name} consolidera ses acquis en s’appliquant avec la même constance dans toutes les matières.`
+          ],
+          fragile: [
+            (name) => `Une plus grande régularité dans le travail personnel permettrait à ${name} de gagner en assurance.`,
+            (name) => `${name} profitera pleinement de son potentiel en restant concentré tout au long des cours.`
+          ],
+          delicat: [
+            (name) => `Il serait bénéfique que ${name} se fixe un cadre de travail stable pour enrayer les irrégularités.`,
+            (name) => `Une organisation nette aiderait ${name} à transformer ses efforts en réussites tangibles.`
+          ],
+          unknown: [
+            (name) => `${name} est invité à conserver cette implication et à structurer encore mieux ses priorités.`
+          ]
+        };
+
+        const closingTemplates = {
+          excellent: [
+            (name) => `Que ${name} poursuive ces efforts : félicitations pour ce trimestre.`,
+            () => `Félicitations, cette dynamique exemplaire est à prolonger.`
+          ],
+          tres_bon: [
+            (name) => `Nous l’encourageons à maintenir cette belle dynamique.`,
+            (name) => `Que ${name} continue ainsi, la trajectoire est très positive.`
+          ],
+          bon: [
+            (name) => `Que ${name} reste sur cette lancée pour confirmer ses progrès.`,
+            () => `Cette attitude appliquée est à conserver pour confirmer les progrès.`
+          ],
+          encourageant: [
+            (name) => `Nous comptons sur ${name} pour prolonger ces efforts réguliers.`,
+            () => `Poursuivez ces efforts, ils finiront par porter pleinement leurs fruits.`
+          ],
+          fragile: [
+            (name) => `Nous restons confiants : ${name} peut progresser en gardant cette motivation.`,
+            () => `Continuons à l’encourager afin qu’il stabilise ses acquis.`
+          ],
+          delicat: [
+            (name) => `Restons mobilisés aux côtés de ${name} pour installer des bases solides.`,
+            () => `Avec de la persévérance, les progrès suivront rapidement.`
+          ],
+          unknown: [
+            () => `Poursuivons cet accompagnement encourageant.`,
+            () => `La progression observée doit être entretenue dans la durée.`
+          ]
+        };
+
+        const introFn = pickVariant(baseSeed, introTemplates[level] || introTemplates.unknown);
+        if (introFn) {
+          sentences.push(introFn(prenom, moyenneMention));
+        }
+
+        if (forces) {
+          const strengthFn = pickVariant(baseSeed + 1, strengthsWithForces);
+          if (strengthFn) {
+            sentences.push(strengthFn(prenom, forces));
+          }
+        } else {
+          const generalFn = pickVariant(baseSeed + 1, generalStrengths[level] || generalStrengths.unknown);
+          if (generalFn) {
+            sentences.push(generalFn(prenom));
+          }
+        }
+
+        const guidancePool = axes ? adviceWithAxes : adviceNoAxes[level] || adviceNoAxes.unknown;
+        const adviceFn = pickVariant(baseSeed + 3, guidancePool);
+        if (adviceFn) {
+          sentences.push(axes ? adviceFn(prenom, axes) : adviceFn(prenom));
+        }
+
+        const closingFn = pickVariant(baseSeed + 4, closingTemplates[level] || closingTemplates.unknown);
+        if (closingFn) {
+          sentences.push(closingFn(prenom));
+        }
+
+        const filtered = sentences.filter(Boolean);
+        while (filtered.length < 3) {
+          const insertionIndex = Math.max(filtered.length - 1, 0);
+          filtered.splice(
+            insertionIndex,
+            0,
+            `${prenom} est encouragé à maintenir son sérieux au quotidien pour confirmer ces avancées.`
+          );
+        }
+
+        return filtered.slice(0, 5).join(' ');
       }
 
       function generateProfile(data) {
