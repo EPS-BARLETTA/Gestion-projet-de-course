@@ -332,14 +332,18 @@ Quota atteint : lorsque le quota gratuit est épuisé, ajoutez une nouvelle clé
         max-height: 360px;
       }
 
-      .hidden-highlights .highlight {
+      .hidden-highlights .highlight,
+      .hidden-highlights .ai-highlight-positive,
+      .hidden-highlights .ai-highlight-negative {
         background: transparent !important;
         color: inherit !important;
         box-shadow: none !important;
       }
 
       .hidden-highlights .highlight-positive,
-      .hidden-highlights .highlight-negative {
+      .hidden-highlights .highlight-negative,
+      .hidden-highlights .ai-highlight-positive,
+      .hidden-highlights .ai-highlight-negative {
         background: transparent !important;
       }
       .hide-fr-corrections .fr-correction-error,
@@ -711,7 +715,7 @@ Quota atteint : lorsque le quota gratuit est épuisé, ajoutez une nouvelle clé
   },
   "points_forts_generaux": ["String"],
   "axes_amelioration": ["String"]
-}\nConsignes détaillées :\n- ${firstNameHint}\n- Pour chaque \"appreciation\", conserve intégralement le texte fourni par l’enseignant.\n- Repère seulement les fautes probables d’orthographe, de grammaire ou d’accord et entoure le segment fautif avec <span class=\"fr-correction-error\" style=\"color:red; font-weight:600;\">texte fautif</span> suivi immédiatement de <span class=\"fr-correction-fix\" style=\"color:red;\"> (correction)</span>.\n- Ne corrige pas en cas de doute et ne touche pas aux noms propres, noms de matières, sigles ou acronymes.\n- N’ajoute aucune autre balise; conserve les balises existantes éventuelles.\n- Propose une synthèse avec scores de 1 (faible) à 5 (excellent) pour les axes listés.\n- Retourne uniquement du JSON strict sans texte additionnel ni markdown.\n\nCONTENU DU BULLETIN :\n${text}`;
+}\nConsignes détaillées :\n- ${firstNameHint}\n- Pour chaque \"appreciation\", conserve intégralement le texte fourni par l’enseignant.\n- Entoure les formulations positives, encouragements, félicitations, progrès, sérieux, motivation ou implication avec <span class=\"ai-highlight-positive\" style=\"background-color: #dcfce7;\">…</span>.\n- Entoure les formulations négatives, bavardages, manque de sérieux, manque d’implication, attitude perturbatrice, déconcentration ou difficultés de comportement avec <span class=\"ai-highlight-negative\" style=\"background-color: #fee2e2;\">…</span>.\n- Repère seulement les fautes probables d’orthographe, de grammaire ou d’accord et entoure le segment fautif avec <span class=\"fr-correction-error\" style=\"color:red; font-weight:600;\">texte fautif</span> suivi immédiatement de <span class=\"fr-correction-fix\" style=\"color:red;\"> (correction)</span> ; applique ces balises sans supprimer les autres.\n- Ne corrige pas en cas de doute et ne touche pas aux noms propres, noms de matières, sigles ou acronymes.\n- N’ajoute aucune autre balise; conserve les balises existantes éventuelles et fais coexister tous les marquages.\n- Propose une synthèse avec scores de 1 (faible) à 5 (excellent) pour les axes listés.\n- Retourne uniquement du JSON strict sans texte additionnel ni markdown.\n\nCONTENU DU BULLETIN :\n${text}`;
       }
 
       function cleanModelText(text) {
@@ -728,6 +732,8 @@ Quota atteint : lorsque le quota gratuit est épuisé, ajoutez une nouvelle clé
           'highlight',
           'highlight-positive',
           'highlight-negative',
+          'ai-highlight-positive',
+          'ai-highlight-negative',
           'fr-correction-error',
           'fr-correction-fix'
         ]);
