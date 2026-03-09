@@ -610,7 +610,7 @@ Quota atteint : lorsque le quota gratuit est épuisé, ajoutez une nouvelle clé
 
           setLoader('Analyse IA en cours…', 'info');
           const analysisData = await analyzeBulletinText(bulletinText, firstName);
-          const finalAppreciation = generateFinalAppreciation(analysisData);
+          const finalAppreciation = await generateFinalAppreciation(analysisData);
           const profile = generateProfile(analysisData);
 
           displayAnalysisResults(analysisData);
@@ -932,209 +932,132 @@ Quota atteint : lorsque le quota gratuit est épuisé, ajoutez une nouvelle clé
         return `${head} et ${tail}`;
       }
 
-      function pickVariant(seed, templates) {
-        if (!templates || !templates.length) return null;
-        const index = Math.abs(Math.round(seed)) % templates.length;
-        return templates[index];
+      function sanitizeListForPrompt(list = [], maxItems = 3) {
+        const seen = new Set();
+        const result = [];
+        (list || []).forEach((item) => {
+          if (typeof item !== 'string') return;
+          const trimmed = item.trim();
+          if (!trimmed) return;
+          const key = trimmed.toLowerCase();
+          if (seen.has(key)) return;
+          seen.add(key);
+          result.push(trimmed);
+        });
+        return result.slice(0, maxItems);
       }
 
-      function getPerformanceLevel(avg) {
-        if (!Number.isFinite(avg)) return 'unknown';
-        if (avg >= 15.5) return 'excellent';
-        if (avg >= 13.5) return 'tres_bon';
-        if (avg >= 12) return 'bon';
-        if (avg >= 10.5) return 'encourageant';
-        if (avg >= 9) return 'fragile';
-        return 'delicat';
+      function summarizeSynthese(competences = {}) {
+        const axes = competences.axes || [];
+        const scores = competences.scores || [];
+        if (!axes.length || !scores.length) {
+          return 'Informations limitées sur la progression.';
+        }
+        const descriptors = ['perfectible', 'à renforcer', 'en progrès', 'solide', 'très solide'];
+        const mapped = axes
+          .map((axe, index) => {
+            const score = Number(scores[index]);
+            if (Number.isNaN(score)) return null;
+            const descriptor = descriptors[Math.min(Math.max(score - 1, 0), descriptors.length - 1)];
+            return `${axe} : ${descriptor}`;
+          })
+          .filter(Boolean);
+        return mapped.length ? mapped.join('; ') : 'Informations limitées sur la progression.';
       }
 
-      function generateFinalAppreciation(data) {
+      function determineConclusionTone(data) {
+        const scores = (data.synthese_competences?.scores || [])
+          .map((value) => Number(value))
+          .filter((value) => !Number.isNaN(value));
+        const pointsFortCount = (data.points_forts_generaux || []).length;
+        if (!scores.length && !pointsFortCount) {
+          return 'Poursuivez vos efforts.';
+        }
+        const avg = scores.length
+          ? scores.reduce((sum, value) => sum + value, 0) / scores.length
+          : pointsFortCount >= 2
+            ? 3.5
+            : 2.8;
+        if (avg >= 4.2) return 'Félicitations pour ce très bon trimestre.';
+        if (avg >= 3.4) return 'Félicitations pour ce trimestre.';
+        if (avg >= 2.8) return 'Poursuivez vos efforts.';
+        return 'Il faut persévérer.';
+      }
+
+      function buildAppreciationPrompt(data) {
+        const prenom = data.prenom?.trim() || 'cet élève';
+        const points = sanitizeListForPrompt(data.points_forts_generaux);
+        const axes = sanitizeListForPrompt(data.axes_amelioration);
+        const synthese = summarizeSynthese(data.synthese_competences || {});
+        const tonConclusion = determineConclusionTone(data);
+        const pointsText = points.length ? points.join(' / ') : 'Non précisés';
+        const axesText = axes.length ? axes.join(' / ') : 'À préciser';
+        return `Tu es un professeur principal expérimenté de collège ou lycée français.
+
+Ta tâche est de rédiger l’appréciation générale d’un bulletin scolaire pour l’élève ${prenom}.
+
+Voici les éléments à prendre en compte :
+- points forts : ${pointsText}
+- axes d’amélioration : ${axesText}
+- synthèse des compétences : ${synthese}
+- tonalité attendue de conclusion : ${tonConclusion}
+
+Consignes impératives :
+- Rédige une appréciation générale naturelle, fluide et crédible, comme sur un vrai bulletin scolaire.
+- Le texte doit faire 3 à 4 phrases maximum.
+- Reformule les informations avec élégance : ne recopie jamais les éléments fournis tels quels.
+- Ne mentionne ni moyenne, ni note, ni chiffre.
+- Ne fais apparaître aucune liste dans la réponse.
+- N’utilise pas de tournures artificielles ou lourdes.
+- Adopte un ton professionnel, bienveillant et lucide.
+- Mets en valeur les points positifs de l’élève.
+- Formule les axes de progrès avec tact et précision.
+- La dernière phrase doit correspondre à la tonalité attendue de conclusion.
+- Le prénom de l’élève peut apparaître une fois au maximum si cela rend la phrase plus naturelle.
+- Réponds uniquement par le texte final, sans titre, sans introduction, sans guillemets.`;
+      }
+
+      function fallbackAppreciation(data) {
         const prenom = data.prenom?.trim() || 'L’élève';
-        const moyenneStr = computeGlobalAverage(data.matieres);
-        const moyenneVal = parseFloat(String(moyenneStr).replace(',', '.'));
-        const hasMoyenne = moyenneStr !== 'N/A' && !Number.isNaN(moyenneVal);
-        const moyenneMention = hasMoyenne ? ` (moyenne ${moyenneStr})` : '';
-        const level = getPerformanceLevel(moyenneVal);
-        const forces = formatList(data.points_forts_generaux || []);
-        const axes = formatList(data.axes_amelioration || []);
-        const seedName = [...prenom].reduce((acc, char) => acc + char.charCodeAt(0), 0);
-        const baseSeed = seedName + Math.round((Number.isFinite(moyenneVal) ? moyenneVal : 10) * 13);
+        const strengths = sanitizeListForPrompt(data.points_forts_generaux, 2);
+        const improvements = sanitizeListForPrompt(data.axes_amelioration, 2);
+        const tone = determineConclusionTone(data);
         const sentences = [];
 
-        const introTemplates = {
-          excellent: [
-            (name, mention) => `${name} réalise un excellent trimestre${mention}, porté par un engagement remarquable.`,
-            (name, mention) => `${name} confirme des résultats d’une grande qualité${mention} et une attitude exemplaire.`
-          ],
-          tres_bon: [
-            (name, mention) => `${name} signe un très bon trimestre${mention}, sérieux et constant.`,
-            (name, mention) => `${name} montre des acquis solides${mention} et reste très impliqué.`
-          ],
-          bon: [
-            (name, mention) => `${name} présente un ensemble satisfaisant${mention}, avec des progrès sensibles.`,
-            (name, mention) => `${name} fait preuve d’un investissement régulier${mention} qui commence à porter ses fruits.`
-          ],
-          encourageant: [
-            (name, mention) => `${name} réalise un trimestre encourageant${mention}, la dynamique est positive.`,
-            (name, mention) => `${name} montre de réelles capacités${mention} grâce aux efforts engagés récemment.`
-          ],
-          fragile: [
-            (name, mention) => `${name} garde un potentiel certain${mention}, même si l’ensemble reste à stabiliser.`,
-            (name, mention) => `${name} progresse avec prudence${mention} et doit encore gagner en régularité.`
-          ],
-          delicat: [
-            (name, mention) => `${name} dispose d’atouts réels${mention}, mais doit structurer davantage son investissement.`,
-            (name, mention) => `${name} conserve la capacité de rebondir${mention}, à condition de renforcer son organisation.`
-          ],
-          unknown: [
-            (name) => `${name} fait preuve d’un engagement appréciable, même en l’absence d’une moyenne consolidée.`,
-            (name) => `${name} se montre disponible et impliqué, ce qui ressort nettement des retours de classe.`
-          ]
-        };
+        sentences.push(`${prenom} propose un ensemble sérieux et encourageant.`); // positive intro
 
-        const strengthsWithForces = [
-          (name, qualities) => `On apprécie particulièrement ${qualities}, gages d’une belle motivation.`,
-          (name, qualities) => `${qualities} se remarquent nettement et nourrissent ses réussites.`,
-          (name, qualities) => `Les professeurs soulignent ${qualities}, preuve d’une implication sincère.`
-        ];
-
-        const generalStrengths = {
-          excellent: [
-            () => `Sa participation nourrit la dynamique de classe et révèle une grande maturité.`,
-            () => `Le travail est régulier et la présence en cours toujours constructive.`
-          ],
-          tres_bon: [
-            () => `Son attitude attentive et disponible favorise la qualité des échanges.`,
-            () => `Le sérieux quotidien et la constance des efforts sont très appréciés.`
-          ],
-          bon: [
-            () => `Sa motivation s’affirme et la classe profite de contributions pertinentes.`,
-            () => `Le travail est mieux structuré et gagne en efficacité.`
-          ],
-          encourageant: [
-            () => `Les efforts récents se traduisent par plus de présence et d’application.`,
-            () => `La progression est visible, notamment grâce à un travail plus régulier.`
-          ],
-          fragile: [
-            () => `L’implication reste inégale mais l’on perçoit une réelle volonté de progresser.`,
-            () => `Les bases se consolident peu à peu lorsque l’attention demeure soutenue.`
-          ],
-          delicat: [
-            () => `Les intentions sont bonnes et demandent à devenir des habitudes durables.`,
-            () => `Lorsqu’il est concentré, son travail gagne en qualité; il faut ancrer cette exigence.`
-          ],
-          unknown: [
-            () => `Les retours soulignent une présence attentive et respectueuse.`,
-            () => `Son attitude sérieuse est perceptible malgré l’absence d’indicateurs chiffrés.`
-          ]
-        };
-
-        const adviceWithAxes = [
-          (name, needs) => `Pour aller plus loin, ${name} gagnerait à ${needs}.`,
-          (name, needs) => `Afin de poursuivre sur cette lancée, ${name} devra veiller à ${needs}.`,
-          (name, needs) => `Il lui serait profitable de ${needs} pour consolider l’ensemble.`
-        ];
-
-        const adviceNoAxes = {
-          excellent: [
-            (name) => `Pour aller plus loin, ${name} peut continuer à nourrir cette exigence dans chaque discipline.`,
-            (name) => `Afin de poursuivre sur cette lancée, ${name} veillera à conserver la même intensité de travail.`
-          ],
-          tres_bon: [
-            (name) => `${name} gagnerait à maintenir cette rigueur sur toute la durée du trimestre.`,
-            (name) => `Pour conforter ces acquis, ${name} doit rester attentif aux détails méthodologiques.`
-          ],
-          bon: [
-            (name) => `Une organisation encore plus régulière permettra à ${name} de franchir un cap supplémentaire.`,
-            (name) => `Pour aller plus loin, ${name} devra pérenniser la méthodologie mise en place.`
-          ],
-          encourageant: [
-            (name) => `Afin de poursuivre sur cette lancée, ${name} devra garder le même sérieux chaque semaine.`,
-            (name) => `${name} consolidera ses acquis en s’appliquant avec la même constance dans toutes les matières.`
-          ],
-          fragile: [
-            (name) => `Une plus grande régularité dans le travail personnel permettrait à ${name} de gagner en assurance.`,
-            (name) => `${name} profitera pleinement de son potentiel en restant concentré tout au long des cours.`
-          ],
-          delicat: [
-            (name) => `Il serait bénéfique que ${name} se fixe un cadre de travail stable pour enrayer les irrégularités.`,
-            (name) => `Une organisation nette aiderait ${name} à transformer ses efforts en réussites tangibles.`
-          ],
-          unknown: [
-            (name) => `${name} est invité à conserver cette implication et à structurer encore mieux ses priorités.`
-          ]
-        };
-
-        const closingTemplates = {
-          excellent: [
-            (name) => `Que ${name} poursuive ces efforts : félicitations pour ce trimestre.`,
-            () => `Félicitations, cette dynamique exemplaire est à prolonger.`
-          ],
-          tres_bon: [
-            (name) => `Nous l’encourageons à maintenir cette belle dynamique.`,
-            (name) => `Que ${name} continue ainsi, la trajectoire est très positive.`
-          ],
-          bon: [
-            (name) => `Que ${name} reste sur cette lancée pour confirmer ses progrès.`,
-            () => `Cette attitude appliquée est à conserver pour confirmer les progrès.`
-          ],
-          encourageant: [
-            (name) => `Nous comptons sur ${name} pour prolonger ces efforts réguliers.`,
-            () => `Poursuivez ces efforts, ils finiront par porter pleinement leurs fruits.`
-          ],
-          fragile: [
-            (name) => `Nous restons confiants : ${name} peut progresser en gardant cette motivation.`,
-            () => `Continuons à l’encourager afin qu’il stabilise ses acquis.`
-          ],
-          delicat: [
-            (name) => `Restons mobilisés aux côtés de ${name} pour installer des bases solides.`,
-            () => `Avec de la persévérance, les progrès suivront rapidement.`
-          ],
-          unknown: [
-            () => `Poursuivons cet accompagnement encourageant.`,
-            () => `La progression observée doit être entretenue dans la durée.`
-          ]
-        };
-
-        const introFn = pickVariant(baseSeed, introTemplates[level] || introTemplates.unknown);
-        if (introFn) {
-          sentences.push(introFn(prenom, moyenneMention));
-        }
-
-        if (forces) {
-          const strengthFn = pickVariant(baseSeed + 1, strengthsWithForces);
-          if (strengthFn) {
-            sentences.push(strengthFn(prenom, forces));
-          }
-        } else {
-          const generalFn = pickVariant(baseSeed + 1, generalStrengths[level] || generalStrengths.unknown);
-          if (generalFn) {
-            sentences.push(generalFn(prenom));
-          }
-        }
-
-        const guidancePool = axes ? adviceWithAxes : adviceNoAxes[level] || adviceNoAxes.unknown;
-        const adviceFn = pickVariant(baseSeed + 3, guidancePool);
-        if (adviceFn) {
-          sentences.push(axes ? adviceFn(prenom, axes) : adviceFn(prenom));
-        }
-
-        const closingFn = pickVariant(baseSeed + 4, closingTemplates[level] || closingTemplates.unknown);
-        if (closingFn) {
-          sentences.push(closingFn(prenom));
-        }
-
-        const filtered = sentences.filter(Boolean);
-        while (filtered.length < 3) {
-          const insertionIndex = Math.max(filtered.length - 1, 0);
-          filtered.splice(
-            insertionIndex,
-            0,
-            `${prenom} est encouragé à maintenir son sérieux au quotidien pour confirmer ces avancées.`
+        if (strengths.length) {
+          sentences.push(
+            `Son attitude met en valeur ${formatList(strengths)}, ce qui ressort nettement dans le travail de classe.`
           );
+        } else {
+          sentences.push(`Son comportement attentif et l’investissement observé témoignent d’une belle progression.`);
         }
 
-        return filtered.slice(0, 5).join(' ');
+        if (improvements.length) {
+          sentences.push(
+            `Pour aller plus loin, il sera utile de travailler plus régulièrement ${formatList(improvements)}.`
+          );
+        } else {
+          sentences.push(`Une vigilance sur la régularité permettra de consolider les acquis.`);
+        }
+
+        sentences.push(tone);
+        return sentences.slice(0, 4).join(' ');
+      }
+
+      async function generateFinalAppreciation(data) {
+        const prompt = buildAppreciationPrompt(data);
+        try {
+          const response = await callGeminiAPI(prompt);
+          const cleaned = cleanModelText(response).replace(/^['"]|['"]$/g, '').trim();
+          if (cleaned) {
+            return cleaned;
+          }
+        } catch (error) {
+          console.error('Impossible de générer l’appréciation finale via Gemini.', error);
+        }
+        return fallbackAppreciation(data);
       }
 
       function generateProfile(data) {
