@@ -530,8 +530,9 @@ Quota atteint : lorsque le quota gratuit est épuisé, ajoutez une nouvelle clé
 
     <script>
       const GEMINI_MODELS = [
-        'models/gemini-1.5-flash-latest',
-        'models/gemini-1.5-pro-latest'
+        'gemini-2.5-flash',
+        'gemini-flash-latest',
+        'gemini-3-flash-preview'
       ];
 
       const KEY_STORAGE_KEY = 'gemini_api_keys';
@@ -659,7 +660,7 @@ Quota atteint : lorsque le quota gratuit est épuisé, ajoutez une nouvelle clé
         const responseText = await callGeminiAPI(prompt);
         const parsed = safeJsonParse(responseText);
         if (!parsed) {
-          throw new Error('Réponse IA illisible. Merci de réessayer ou de reformuler.');
+          throw new Error('Réponse IA invalide. Ajoutez une nouvelle clé ou relancez l’analyse.');
         }
         if (manualFirstName && !parsed.prenom) {
           parsed.prenom = manualFirstName;
@@ -704,16 +705,20 @@ Quota atteint : lorsque le quota gratuit est épuisé, ajoutez une nouvelle clé
 }\nConsigne : ${firstNameHint} Identifie toutes les matières, leurs moyennes et les appréciations complètes. Propose une synthèse avec scores de 1 (faible) à 5 (excellent) pour les axes listés. Retourne uniquement du JSON sans texte additionnel ni markdown.\n\nCONTENU DU BULLETIN :\n${text}`;
       }
 
+      function cleanModelText(text) {
+        return String(text || '')
+          .replace(/```json/gi, '')
+          .replace(/```/g, '')
+          .trim();
+      }
+
       function safeJsonParse(rawText) {
         if (!rawText) return null;
-        const cleaned = rawText
-          .replace(/^```json|```$/gim, '')
-          .replace(/^```|```$/gim, '')
-          .trim();
+        const cleaned = cleanModelText(rawText);
         try {
           return JSON.parse(cleaned);
         } catch (error) {
-          console.warn('JSON parsing error', error);
+          console.warn('JSON parsing error', error, cleaned.slice(0, 200));
           return null;
         }
       }
@@ -721,72 +726,171 @@ Quota atteint : lorsque le quota gratuit est épuisé, ajoutez une nouvelle clé
       async function callGeminiAPI(userPrompt) {
         const keys = loadStoredKeys();
         if (!keys.length) {
-          throw new Error('Aucune clé API n’est enregistrée.');
+          throw new Error('Ajoutez au moins une clé API Gemini avant de lancer l’analyse.');
         }
 
-        let lastError = new Error('Impossible de contacter Gemini.');
+        let lastError = null;
 
         for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
           const key = keys[keyIndex];
           setActiveKeyIndex(keyIndex, keys.length);
+          console.log('Tentative clé fin :', key.slice(-4));
+
+          let allModels404 = true;
+          let skipToNextKey = false;
 
           for (const model of GEMINI_MODELS) {
-            try {
-              const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/${model}:generateContent?key=${encodeURIComponent(key)}`,
-                {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    contents: [
-                      {
-                        role: 'user',
-                        parts: [{ text: userPrompt }]
-                      }
-                    ]
-                  })
-                }
-              );
+            console.log('Tentative modèle :', model);
+            const result = await requestGeminiModel(model, key, userPrompt);
 
-              if (response.status === 429) {
-                lastError = new Error(
-                  'Quota atteint pour cette clé. Passage à la suivante…'
-                );
-                break; // switch to next key
+            if (result.status === 'success') {
+              return result.text;
+            }
+
+            if (result.status !== 'model_missing') {
+              allModels404 = false;
+            }
+
+            if (result.status === 'model_missing') {
+              continue;
+            }
+
+            if (result.status === 'quota') {
+              lastError = new Error('Quota atteint pour cette clé. Passage à la suivante.');
+              skipToNextKey = true;
+              break;
+            }
+
+            if (result.status === 'invalid_key') {
+              lastError = new Error('Clé invalide ou refusée. Passez à une clé active.');
+              skipToNextKey = true;
+              break;
+            }
+
+            if (result.status === 'network') {
+              lastError = result.error || new Error('Erreur réseau Gemini.');
+              skipToNextKey = true;
+              break;
+            }
+
+            if (result.status === 'empty') {
+              lastError = new Error('Réponse Gemini vide. Tentative d’un autre modèle.');
+              continue;
+            }
+
+            if (result.status === 'other_error') {
+              lastError = result.error;
+            }
+          }
+
+          if (skipToNextKey) {
+            continue;
+          }
+
+          if (allModels404) {
+            const fallbackModel = await findFallbackModel(key);
+            if (fallbackModel) {
+              console.log('Tentative fallback modèle :', fallbackModel);
+              const fallbackResult = await requestGeminiModel(fallbackModel, key, userPrompt);
+              if (fallbackResult.status === 'success') {
+                return fallbackResult.text;
               }
-
-              if (response.status === 401 || response.status === 403) {
-                lastError = new Error(
-                  'Clé refusée (401/403). Vérifiez qu’elle est valide et autorisée.'
-                );
-                break;
-              }
-
-              if (!response.ok) {
-                const text = await response.text();
-                lastError = new Error(`Erreur Gemini (${response.status}) : ${text}`);
-                break;
-              }
-
-              const data = await response.json();
-              const outputText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-              if (!outputText) {
-                lastError = new Error('Réponse Gemini vide.');
+              if (fallbackResult.status === 'quota') {
+                lastError = new Error('Quota atteint pour cette clé. Passage à la suivante.');
                 continue;
               }
-
-              return outputText;
-            } catch (error) {
-              console.error('Appel Gemini échoué', error);
-              lastError = error;
+              if (fallbackResult.status === 'invalid_key') {
+                lastError = new Error('Clé invalide ou refusée. Passez à une clé active.');
+                continue;
+              }
+              if (fallbackResult.status === 'network') {
+                lastError = fallbackResult.error || new Error('Erreur réseau Gemini.');
+                continue;
+              }
             }
           }
         }
 
         throw new Error(
           lastError?.message ||
-            'Toutes les clés ont été testées sans succès. Ajoutez une nouvelle clé Gemini.'
+            'Tous les quotas API sont atteints ou la configuration Gemini est invalide. Ajoutez une nouvelle clé API Gemini.'
         );
+      }
+
+      async function requestGeminiModel(model, key, userPrompt) {
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(
+          key
+        )}`;
+        try {
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [
+                {
+                  parts: [{ text: userPrompt }]
+                }
+              ]
+            })
+          });
+
+          if (response.status === 404) {
+            console.warn('Modèle indisponible (404) :', model);
+            return { status: 'model_missing' };
+          }
+
+          if (response.status === 429) {
+            console.warn('Quota atteint (429) pour la clé', key.slice(-4));
+            return { status: 'quota' };
+          }
+
+          if (response.status === 401 || response.status === 403) {
+            console.warn('Clé refusée (401/403), passage à la suivante.');
+            return { status: 'invalid_key' };
+          }
+
+          if (!response.ok) {
+            const text = await response.text();
+            const error = new Error(`Erreur Gemini (${response.status}) : ${text}`);
+            console.error(error);
+            return { status: 'other_error', error };
+          }
+
+          const data = await response.json();
+          const outputText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (!outputText) {
+            console.warn('Réponse Gemini sans texte, on tente le modèle suivant.');
+            return { status: 'empty' };
+          }
+
+          return { status: 'success', text: outputText };
+        } catch (error) {
+          console.error('Erreur réseau Gemini', error);
+          return { status: 'network', error };
+        }
+      }
+
+      async function findFallbackModel(key) {
+        try {
+          const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`
+          );
+          if (!response.ok) {
+            return null;
+          }
+          const data = await response.json();
+          const models = data?.models || [];
+          const candidate = models
+            .map((item) => ({
+              name: item.name?.replace('models/', ''),
+              supportsGeneration: (item.supportedGenerationMethods || []).includes('generateContent')
+            }))
+            .find((item) => item.supportsGeneration && /flash/i.test(item.name || ''));
+          return candidate?.name || null;
+        } catch (error) {
+          console.warn('Impossible de récupérer la liste des modèles Gemini pour fallback.', error);
+          return null;
+        }
       }
 
       function generateFinalAppreciation(data) {
