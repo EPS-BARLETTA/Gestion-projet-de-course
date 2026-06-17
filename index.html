@@ -441,7 +441,7 @@ Quota atteint : lorsque le quota gratuit est épuisé, ajoutez une nouvelle clé
             <input
               type="text"
               id="apiKeyInput"
-              placeholder="Saisissez votre clé (ex : AIza...)"
+              placeholder="Collez votre clé Gemini complète"
               autocomplete="off"
             />
             <button class="btn-secondary" id="addKeyBtn">Ajouter la clé</button>
@@ -542,8 +542,8 @@ Quota atteint : lorsque le quota gratuit est épuisé, ajoutez une nouvelle clé
     <script>
       const GEMINI_MODELS = [
         'gemini-2.5-flash',
-        'gemini-flash-latest',
-        'gemini-3-flash-preview'
+        'gemini-2.5-flash-lite',
+        'gemini-3.5-flash'
       ];
 
       const KEY_STORAGE_KEY = 'gemini_api_keys';
@@ -810,7 +810,9 @@ Quota atteint : lorsque le quota gratuit est épuisé, ajoutez une nouvelle clé
             }
 
             if (result.status === 'invalid_key') {
-              lastError = new Error('Clé invalide ou refusée. Passez à une clé active.');
+              lastError =
+                result.error ||
+                new Error('Clé Gemini refusée. Vérifiez que la clé est active, copiée entièrement depuis Google AI Studio, et associée à l’API Gemini.');
               skipToNextKey = true;
               break;
             }
@@ -848,7 +850,9 @@ Quota atteint : lorsque le quota gratuit est épuisé, ajoutez une nouvelle clé
                 continue;
               }
               if (fallbackResult.status === 'invalid_key') {
-                lastError = new Error('Clé invalide ou refusée. Passez à une clé active.');
+                lastError =
+                  fallbackResult.error ||
+                  new Error('Clé Gemini refusée. Vérifiez que la clé est active, copiée entièrement depuis Google AI Studio, et associée à l’API Gemini.');
                 continue;
               }
               if (fallbackResult.status === 'network') {
@@ -894,7 +898,12 @@ Quota atteint : lorsque le quota gratuit est épuisé, ajoutez une nouvelle clé
 
           if (response.status === 401 || response.status === 403) {
             console.warn('Clé refusée (401/403), passage à la suivante.');
-            return { status: 'invalid_key' };
+            return {
+              status: 'invalid_key',
+              error: new Error(
+                'Clé Gemini refusée. Vérifiez que la clé est active, copiée entièrement depuis Google AI Studio, et associée à l’API Gemini.'
+              )
+            };
           }
 
           if (!response.ok) {
@@ -1323,8 +1332,9 @@ Consignes impératives :
           errorEl.textContent = 'Merci de saisir une clé valide.';
           return;
         }
-        if (!/^AIza[0-9A-Za-z-_]{10,}$/.test(value)) {
-          errorEl.textContent = 'Le format de la clé semble incorrect (doit commencer par AIza).';
+        if (!/^(AIza[0-9A-Za-z-_]{10,}|AQ\.[A-Za-z0-9._-]{20,})$/.test(value)) {
+          errorEl.textContent =
+            'Le format de la clé semble incorrect. Collez une clé Gemini complète copiée depuis Google AI Studio.';
           return;
         }
         const keys = loadStoredKeys();
